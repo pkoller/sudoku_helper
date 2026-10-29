@@ -159,7 +159,9 @@ function fullHouse(grid, cands) {
   return null;
 }
 
-function hiddenSingle(grid, cands, types) {
+// pure = true: nur Einer, die sich allein durch gesetzte Ziffern erklären lassen.
+// pure = false: auch Einer, bei denen andere Zellen nur durch früher gestrichene Kandidaten wegfallen.
+function hiddenSingle(grid, cands, types, pure) {
   for (const u of UNITS) {
     if (!types.includes(u.type)) continue;
     for (let d = 1; d <= 9; d++) {
@@ -168,22 +170,28 @@ function hiddenSingle(grid, cands, types) {
       const spots = u.cells.filter(c => cands[c] & b);
       if (spots.length !== 1) continue;
       const c = spots[0];
-      // Welche gesetzten Ziffern blockieren die anderen Zellen? (für die Hervorhebung)
-      const blockers = new Set();
+      // Warum fällt die Ziffer in den anderen Zellen weg? Gesetzte Ziffer in Sichtweite
+      // oder Kandidat wurde vorher gestrichen (durch einen Tipp oder den Nutzer).
+      const blockers = new Set(), struck = [];
       for (const o of u.cells) {
         if (o === c || grid[o]) continue;
         const blocker = PEERS[o].find(p => grid[p] === d);
         if (blocker !== undefined) blockers.add(blocker);
+        else struck.push(o);
       }
+      if (pure && struck.length) continue;
+      const reasons = [];
+      if (blockers.size) reasons.push(`blockiert durch die ${d} in ${cellList([...blockers])}`);
+      if (struck.length) reasons.push(`in ${cellList(struck)} wurde die ${d} schon vorher als Kandidat gestrichen`);
       return {
         technique: 'hidden-single',
         title: 'Versteckter Einer (Hidden Single)',
         hint: `Suche die ${d} ${unitNameDat(u)}.`,
         text: `${unitName(u)} braucht noch eine ${d}. In allen anderen freien Zellen ${unitNameDat(u).replace('in ', 'von ')} ist die ${d} unmöglich` +
-          (blockers.size ? ` (blockiert durch die ${d} in ${cellList([...blockers])})` : '') +
+          (reasons.length ? ` (${reasons.join('; ')})` : '') +
           `. Also muss die ${d} nach ${cellName(c)}.`,
         place: [{ cell: c, digit: d }], eliminate: [],
-        focus: u.cells, cells: [c, ...blockers], keyCands: [{ cell: c, digit: d }],
+        focus: u.cells, cells: [c, ...blockers, ...struck], keyCands: [{ cell: c, digit: d }],
       };
     }
   }
@@ -626,8 +634,9 @@ function uniqueRectangle(grid, cands) {
 
 export const TECHNIQUES = [
   { name: 'Letzte freie Zelle', fn: fullHouse },
-  { name: 'Versteckter Einer im Block', fn: (g, c) => hiddenSingle(g, c, ['box']) },
-  { name: 'Versteckter Einer in Zeile/Spalte', fn: (g, c) => hiddenSingle(g, c, ['row', 'col']) },
+  { name: 'Versteckter Einer im Block', fn: (g, c) => hiddenSingle(g, c, ['box'], true) },
+  { name: 'Versteckter Einer in Zeile/Spalte', fn: (g, c) => hiddenSingle(g, c, ['row', 'col'], true) },
+  { name: 'Versteckter Einer (mit Streichungen)', fn: (g, c) => hiddenSingle(g, c, ['box', 'row', 'col'], false) },
   { name: 'Einziger Kandidat', fn: nakedSingle },
   { name: 'Blockade / Claiming', fn: lockedCandidates },
   { name: 'Nacktes Paar', fn: (g, c) => nakedSubset(g, c, 2) },

@@ -133,3 +133,17 @@ test('Jede Technik hat Texte', () => {
   assert.equal(ALL, 0b1111111110);
   assert.equal(PEERS[0].length, 20);
 });
+
+test('Versteckter Einer nennt vorher gestrichene Kandidaten', () => {
+  // Spalte 1: die 6 ist nur durch Z3S2 und durch Streichungen in Z5S1/Z9S1 ausgeschlossen.
+  const g = parseGrid('005000090040300000060010000100000048000008700738401000200500600070140025000009100');
+  const elim = new Array(81).fill(0);
+  elim[36] = 1 << 6; elim[72] = 1 << 6;
+  const step = nextStep(g, elim);
+  assert.equal(step.technique, 'hidden-single');
+  assert.deepEqual(step.place, [{ cell: 63, digit: 6 }]);
+  assert.match(step.text, /Z5S1 und Z9S1 wurde die 6 schon vorher als Kandidat gestrichen/);
+  // Ohne Streichungen darf dieser Einer nicht behauptet werden.
+  const plain = nextStep(g, new Array(81).fill(0));
+  assert.ok(!(plain.technique === 'hidden-single' && plain.place[0].cell === 63));
+});

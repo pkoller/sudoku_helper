@@ -1,5 +1,5 @@
 // Offline-Cache für die App-Dateien. Version erhöhen, wenn sich Dateien ändern.
-const CACHE = 'sudoku-helper-v4';
+const CACHE = 'sudoku-helper-v5';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/solver.js', 'js/vision.js', 'js/handwriting.js',
