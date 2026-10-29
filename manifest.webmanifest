@@ -1,6 +1,6 @@
 {
-  "name": "Sudoku-Helfer",
-  "short_name": "Sudoku",
+  "name": "Willis Sudoku Helfer",
+  "short_name": "Willis Sudoku",
   "description": "Sudoku fotografieren und den nächsten Lösungsschritt erklärt bekommen",
   "lang": "de",
   "start_url": "./",

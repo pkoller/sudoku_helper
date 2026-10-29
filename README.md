@@ -1,4 +1,4 @@
-# Sudoku-Helfer
+# Willis Sudoku Helfer
 
 Fotografiere ein Sudoku mit dem Handy – die App erkennt die Ziffern und schlägt dir den
 **nächsten logischen Schritt** vor, mit verständlicher Erklärung. Kein Komplett-Lösen,
