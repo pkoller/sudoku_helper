@@ -6,6 +6,7 @@ import { SAMPLES } from './handwriting.js';
 
 const $ = id => document.getElementById(id);
 const STORE_KEY = 'sudoku-helper-state-v1';
+const CAND_MODE_KEY = 'sudoku-helper-cand-mode';
 const MAX_SIDE = 1200;
 
 const state = {
@@ -15,10 +16,11 @@ const state = {
   photo: null,       // {imageData, canvas, corners}
   // Spielen
   givens: null, grid: null, elim: null, solution: null,
+  marks: null,       // eigene Notizen (Bitmasken), nur im Modus „Eigene Notizen“
   history: [],
   selected: -1,
   notes: false,
-  showCands: true,
+  candMode: loadCandMode(), // 'auto' | 'own' | 'off'
   hint: null,        // {step, level}
 };
 
@@ -242,6 +244,7 @@ function startGame(grid, solution, entries = grid) {
   state.givens = grid.map(v => v > 0);
   state.grid = entries.slice();
   state.elim = new Array(81).fill(0);
+  state.marks = new Array(81).fill(0);
   state.solution = solution;
   state.history = [];
   state.selected = -1;
@@ -253,7 +256,7 @@ function startGame(grid, solution, entries = grid) {
 }
 
 function pushHistory() {
-  state.history.push({ grid: state.grid.slice(), elim: state.elim.slice() });
+  state.history.push({ grid: state.grid.slice(), elim: state.elim.slice(), marks: state.marks.slice() });
   if (state.history.length > 300) state.history.shift();
 }
 
@@ -265,12 +268,24 @@ function playInput(d) {
     state.grid[c] = 0;
   } else if (state.notes) {
     if (state.grid[c]) { state.history.pop(); return; }
-    state.elim[c] ^= 1 << d;
+    if (state.candMode === 'auto') {
+      state.elim[c] ^= 1 << d;
+    } else {
+      // Eigene Notizen: Ziffer eintragen bzw. wieder entfernen
+      if (state.candMode === 'off') setCandMode('own');
+      state.marks[c] ^= 1 << d;
+    }
   } else {
     state.grid[c] = state.grid[c] === d ? 0 : d;
+    if (state.grid[c]) clearMarksAround(c, d);
   }
   state.hint = null;
   afterChange();
+}
+
+// Eine gesetzte Ziffer aus den eigenen Notizen in Zeile, Spalte und Block entfernen.
+function clearMarksAround(c, d) {
+  for (const p of PEERS[c]) state.marks[p] &= ~(1 << d);
 }
 
 function afterChange() {
@@ -305,6 +320,8 @@ $('btn-hint-apply').addEventListener('click', () => {
   if (step.wrong) for (const c of step.wrong) state.grid[c] = 0;
   if (step.restore) for (const c of step.restore) state.elim[c] = 0;
   applyStep(state.grid, state.elim, step);
+  for (const { cell, digit } of step.place) clearMarksAround(cell, digit);
+  for (const { cell, digit } of step.eliminate) state.marks[cell] &= ~(1 << digit);
   if (step.place.length) state.selected = step.place[0].cell;
   state.hint = null;
   afterChange();
@@ -313,11 +330,20 @@ $('btn-hint-apply').addEventListener('click', () => {
 $('btn-undo').addEventListener('click', () => {
   const h = state.history.pop();
   if (!h) return;
-  state.grid = h.grid; state.elim = h.elim; state.hint = null;
+  state.grid = h.grid; state.elim = h.elim; state.marks = h.marks; state.hint = null;
   save(); renderPlay();
 });
 $('btn-mode').addEventListener('click', () => { state.notes = !state.notes; renderPlay(); });
-$('btn-cands').addEventListener('click', () => { state.showCands = !state.showCands; renderPlay(); });
+const CAND_MODES = ['auto', 'own', 'off'];
+const CAND_LABELS = { auto: '123 Automatisch', own: '✍️ Eigene Notizen', off: '🚫 Keine Kandidaten' };
+function setCandMode(mode) {
+  state.candMode = mode;
+  try { localStorage.setItem(CAND_MODE_KEY, mode); } catch { /* Speicher nicht verfügbar */ }
+}
+$('btn-cands').addEventListener('click', () => {
+  setCandMode(CAND_MODES[(CAND_MODES.indexOf(state.candMode) + 1) % CAND_MODES.length]);
+  renderPlay();
+});
 
 function renderPlay() {
   const { grid, givens } = state;
@@ -332,8 +358,9 @@ function renderPlay() {
   const elim = new Set(lvl2 ? step.eliminate.map(k => k.cell * 10 + k.digit) : []);
   const place = new Map(lvl2 ? step.place.map(p => [p.cell, p.digit]) : []);
   const selVal = state.selected >= 0 ? grid[state.selected] : 0;
-  // Kandidaten anzeigen, wenn eingeschaltet – oder wenn der Tipp sie braucht.
-  const candsVisible = state.showCands || (lvl2 && step.eliminate.length > 0);
+  // Braucht der Tipp die Kandidaten (Streichungen), werden die automatischen angezeigt.
+  const hintNeedsCands = lvl2 && step.eliminate.length > 0;
+  const shown = hintNeedsCands ? 'auto' : state.candMode;
 
   renderGrid($('play-grid'), c => {
     const classes = [];
@@ -348,8 +375,8 @@ function renderPlay() {
       return { value: place.get(c), classes, ghost: true };
     }
     if (grid[c]) return { value: grid[c], classes };
-    if (!candsVisible) return { value: 0, classes };
-    const m = cands[c];
+    if (shown === 'off') return { value: 0, classes };
+    const m = shown === 'own' ? state.marks[c] : cands[c];
     const cand = [];
     for (let d = 1; d <= 9; d++) {
       const has = m & (1 << d);
@@ -371,7 +398,8 @@ function renderPlay() {
 
   $('btn-mode').textContent = state.notes ? '📝 Notiz' : '✏️ Ziffer';
   $('btn-mode').classList.toggle('on', state.notes);
-  $('btn-cands').classList.toggle('on', state.showCands);
+  $('btn-cands').textContent = CAND_LABELS[state.candMode];
+  $('btn-cands').classList.toggle('on', state.candMode !== 'off');
   $('btn-undo').disabled = !state.history.length;
 
   const panel = $('hint-panel');
@@ -459,9 +487,16 @@ document.addEventListener('keydown', e => {
 function save() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      givens: state.givens, grid: state.grid, elim: state.elim, solution: state.solution,
+      givens: state.givens, grid: state.grid, elim: state.elim, marks: state.marks, solution: state.solution,
     }));
   } catch { /* Speicher nicht verfügbar */ }
+}
+function loadCandMode() {
+  try {
+    const m = localStorage.getItem(CAND_MODE_KEY);
+    if (['auto', 'own', 'off'].includes(m)) return m;
+  } catch { /* ignorieren */ }
+  return 'auto';
 }
 function loadSaved() {
   try {
@@ -482,7 +517,10 @@ $('btn-manual').addEventListener('click', () => { state.photo = null; startRevie
 $('btn-resume').addEventListener('click', () => {
   const s = loadSaved();
   if (!s) return;
-  Object.assign(state, { givens: s.givens, grid: s.grid, elim: s.elim, solution: s.solution, history: [], hint: null, selected: -1 });
+  Object.assign(state, {
+    givens: s.givens, grid: s.grid, elim: s.elim, marks: s.marks || new Array(81).fill(0), solution: s.solution,
+    history: [], hint: null, selected: -1,
+  });
   show('play');
   renderPlay();
 });
