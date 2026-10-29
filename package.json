@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "test:vision": "node tests/vision.browser.cjs",
+    "test:vision": "node tests/vision.browser.cjs && node tests/photos.browser.cjs",
+    "learn": "node tests/learn-handwriting.cjs",
     "start": "npx --yes http-server -c-1 -p 8080 ."
   }
 }

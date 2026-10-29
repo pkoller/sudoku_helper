@@ -2,6 +2,7 @@ import {
   solve, nextStep, computeCandidates, findConflicts, digitsOf, applyStep, PEERS,
 } from './solver.js';
 import { recognize, buildTemplates } from './vision.js';
+import { SAMPLES } from './handwriting.js';
 
 const $ = id => document.getElementById(id);
 const STORE_KEY = 'sudoku-helper-state-v1';
@@ -10,7 +11,7 @@ const MAX_SIDE = 1200;
 const state = {
   screen: 'start',
   // Prüfen
-  review: null,      // {grid, confidence}
+  review: null,      // {grid, confidence, hand} – hand[i]: eigene (Bleistift-)Ziffer statt Vorgabe
   photo: null,       // {imageData, canvas, corners}
   // Spielen
   givens: null, grid: null, elim: null, solution: null,
@@ -28,7 +29,7 @@ function getTemplates() {
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
       return c;
-    });
+    }, SAMPLES);
   }
   return templates;
 }
@@ -95,13 +96,15 @@ function defaultCorners(w, h) {
 function startReview(res) {
   const msg = $('review-msg');
   if (res) {
-    state.review = { grid: res.grid, confidence: res.confidence };
-    const n = res.grid.filter(v => v).length;
-    msg.textContent = `${n} Ziffern erkannt. Bitte vergleiche mit dem Foto und korrigiere Fehler.`;
+    state.review = { grid: res.grid, confidence: res.confidence, hand: res.hand };
+    const n = res.grid.filter((v, i) => v && !res.hand[i]).length;
+    const own = res.grid.filter((v, i) => v && res.hand[i]).length;
+    msg.textContent = `${n} Vorgaben${own ? ` und ${own} eigene Ziffern (blau)` : ''} erkannt. ` +
+      'Bitte vergleiche mit dem Foto und korrigiere Fehler.';
     msg.classList.toggle('error', n < 17);
     if (n < 17) msg.textContent += ' (Ein Sudoku braucht mindestens 17 Ziffern – evtl. Rahmen anpassen.)';
   } else {
-    state.review = { grid: new Array(81).fill(0), confidence: new Array(81).fill(1) };
+    state.review = { grid: new Array(81).fill(0), confidence: new Array(81).fill(1), hand: new Array(81).fill(false) };
     msg.textContent = state.photo
       ? 'Kein Sudoku gefunden. Ziehe die Ecken auf das Sudoku und tippe „Neu erkennen“ – oder gib die Ziffern selbst ein.'
       : 'Gib die vorgegebenen Ziffern ein.';
@@ -181,12 +184,12 @@ $('btn-rescan').addEventListener('click', async () => {
 // --- Prüfen-Gitter ---
 
 function renderReview() {
-  const { grid, confidence } = state.review;
+  const { grid, confidence, hand } = state.review;
   const conflicts = new Set(findConflicts(grid));
   renderGrid($('review-grid'), c => ({
     value: grid[c],
     classes: [
-      grid[c] ? 'given' : '',
+      grid[c] ? (hand[c] ? 'user' : 'given') : '',
       c === state.selected ? 'sel' : '',
       conflicts.has(c) ? 'err' : (grid[c] && confidence[c] < 0.3 ? 'unsure' : ''),
     ],
@@ -195,14 +198,26 @@ function renderReview() {
 
 function reviewInput(d) {
   if (state.selected < 0) return;
-  state.review.grid[state.selected] = d;
+  const { grid, hand } = state.review;
+  if (!grid[state.selected] || !d) hand[state.selected] = false;
+  grid[state.selected] = d;
   state.review.confidence[state.selected] = 1;
   renderReview();
 }
 
+// Vorgabe (gedruckt) ↔ eigene Ziffer (Handschrift) umschalten
+$('btn-kind').addEventListener('click', () => {
+  const c = state.selected;
+  if (c < 0 || !state.review.grid[c]) return;
+  state.review.hand[c] = !state.review.hand[c];
+  renderReview();
+});
+
 $('btn-accept').addEventListener('click', () => {
-  const grid = state.review.grid;
+  const { grid: all, hand } = state.review;
+  const grid = all.map((v, i) => hand[i] ? 0 : v);
   const msg = $('review-msg');
+  // Doppelte eigene Ziffern dürfen sein (echte Fehler zeigt das Spiel an), doppelte Vorgaben nicht.
   if (findConflicts(grid).length) {
     msg.textContent = 'Es gibt doppelte Ziffern (rot markiert). Bitte korrigieren.';
     msg.classList.add('error');
@@ -217,15 +232,15 @@ $('btn-accept').addEventListener('click', () => {
   if (count > 1 && !confirm('Dieses Sudoku hat mehr als eine Lösung (evtl. fehlt eine Ziffer). Trotzdem starten? Fehlerprüfung ist dann ausgeschaltet.')) {
     return;
   }
-  startGame(grid, count === 1 ? solution : null);
+  startGame(grid, count === 1 ? solution : null, all);
 });
 
 // ---------------------------------------------------------------------------
 // Spiel
 
-function startGame(grid, solution) {
+function startGame(grid, solution, entries = grid) {
   state.givens = grid.map(v => v > 0);
-  state.grid = grid.slice();
+  state.grid = entries.slice();
   state.elim = new Array(81).fill(0);
   state.solution = solution;
   state.history = [];
