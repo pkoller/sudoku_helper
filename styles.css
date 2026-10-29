@@ -87,7 +87,7 @@ main { max-width: 520px; margin: 0 auto; padding: 16px; }
 .cell.br { border-right: 2px solid var(--line); }
 .cell.bb { border-bottom: 2px solid var(--line); }
 .cell.given { font-weight: 700; }
-.cell.user { color: var(--user); }
+.cell.user, .user-text { color: var(--user); }
 .cell.same { background: var(--same); }
 .cell.focus { background: var(--focus); }
 .cell.hl { background: var(--hl); }
